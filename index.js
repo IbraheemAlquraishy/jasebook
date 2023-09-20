@@ -6,10 +6,10 @@ const passport = require("passport");
 const cookieParser = require("cookie-parser");
 const LocalStrategy = require("passport-local");
 const session = require("express-session");
-const {postrouter} = require("./posts");
+
 
 const SQLiteStore = require("connect-sqlite3")(session);
-app.use("/", postrouter);
+
 
 app.use(express.json());
 app.use(cookieParser());
@@ -139,6 +139,29 @@ app.post("/logout", function (req, res, next) {
     });
   }
 });
+
+
+
+
+//post handlers
+app.get("/myposts",async(req,res)=>{
+    if(req.user){
+        const db=await openDb()
+        try{
+        const data=await db.all("select * from post where posterid=:id",{
+            ":id":req.user.id
+        })
+        
+        res.send(data)
+    }catch(e){
+        res.send({message:"you dont have posts"})
+    }
+    }else{
+        res.send({message:"you are not signed in"})
+    }
+})
+
+
 
 app.listen(8000, () => {
   console.log("listening to http://localhost:8000");
