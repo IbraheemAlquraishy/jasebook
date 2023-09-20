@@ -6,6 +6,8 @@ const passport = require("passport");
 const cookieParser = require("cookie-parser");
 const LocalStrategy = require("passport-local");
 const session = require("express-session");
+const res = require("express/lib/response");
+const { user } = require("pg/lib/defaults");
 
 const SQLiteStore = require("connect-sqlite3")(session);
 
@@ -123,7 +125,45 @@ app.get("/me", (req, res) => {
   }
 });
 
-//delete here
+//  app.delete("/deuser",async (req, res) => {
+//     const db = await openDb();
+//     const dename = req.user.name
+
+//     if(req.user){
+//         await db.run("DELETE FROM user WHERE name =:name",{":name": dename}, function(err) {
+//             if(err){
+//                 console.log(err)
+//                 res.send({ message: "This user does not exist!" })
+//             }
+//             else{
+//                 console.log("the user has been removed");
+//                 res.send({ message: `The following user: ${dename} has been removed!` })
+//             }
+//         }}
+
+// })
+////////////////////////////////////////
+
+app.delete("/deuser", async (req, res) => {
+  if (req.user) {
+    const db = await openDb();
+    const deid = req.user.id;
+    const dename = req.user.name;
+    const resault = await db.get("SELECT id FROM user WHERE id =:id", {
+      ":id": deid,
+    });
+
+    if (resault == undefined) {
+      res.send({ message: "This user does not exist!" });
+    } else {
+      await db.run("DELETE FROM user WHERE id =:id", {
+        ":id": resault,
+      });
+      console.log("the user has been removed");
+      res.send({ message: `The following user: ${dename} has been removed!` });
+    }
+  }
+});
 
 app.post("/logout", function (req, res, next) {
   if (req.user == undefined) {
