@@ -6,7 +6,7 @@ const passport = require("passport");
 const cookieParser = require("cookie-parser");
 const LocalStrategy = require("passport-local");
 const session = require("express-session");
-const postrouter = require("./posts");
+const {postrouter} = require("./posts");
 
 const SQLiteStore = require("connect-sqlite3")(session);
 app.use("/", postrouter);

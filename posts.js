@@ -4,11 +4,11 @@ const passport = require("passport");
 const cookieParser = require("cookie-parser");
 const session = require("express-session");
 
-const router = express.Router();
-router.use(express.json());
+const postrouter = express.Router();
+postrouter.use(express.json());
 
-router.get("/about", (req, res) => {
+postrouter.get("/about", (req, res) => {
   res.send("hello");
 });
 
-module.exports = { router };
+module.exports = { postrouter };
