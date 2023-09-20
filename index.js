@@ -7,9 +7,7 @@ const cookieParser = require("cookie-parser");
 const LocalStrategy = require("passport-local");
 const session = require("express-session");
 
-
 const SQLiteStore = require("connect-sqlite3")(session);
-
 
 app.use(express.json());
 app.use(cookieParser());
@@ -140,28 +138,25 @@ app.post("/logout", function (req, res, next) {
   }
 });
 
-
-
-
 //post handlers
-app.get("/myposts",async(req,res)=>{
-    if(req.user){
-        const db=await openDb()
-        try{
-        const data=await db.all("select * from post where posterid=:id",{
-            ":id":req.user.id
-        })
-        
-        res.send(data)
-    }catch(e){
-        res.send({message:"you dont have posts"})
-    }
-    }else{
-        res.send({message:"you are not signed in"})
-    }
-})
+app.get("/myposts", async (req, res) => {
+  if (req.user) {
+    const db = await openDb();
+    try {
+      const data = await db.all("select * from post where posterid=:id", {
+        ":id": req.user.id,
+      });
 
+      res.send(data);
+    } catch (e) {
+      res.send({ message: "you dont have posts" });
+    }
+  } else {
+    res.send({ message: "you are not signed in" });
+  }
+});
 
+//likes: add like - remove like - get liked posts by user - get users who likes by post - number of the likes on post
 
 app.listen(8000, () => {
   console.log("listening to http://localhost:8000");
