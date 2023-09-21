@@ -29,6 +29,7 @@
     "pcrypt": "^0.2.0",
     "pg": "^8.11.3",
     "sqlite": "^5.0.1",
-    "sqlite3": "^5.1.6"
+    "sqlite3": "^5.1.6",
+    "validate-image-type": "^2.0.0"
   }
 }

@@ -6,7 +6,30 @@ const passport = require("passport");
 const cookieParser = require("cookie-parser");
 const LocalStrategy = require("passport-local");
 const session = require("express-session");
+const fs=require("fs")
+const path=require("path")
+const multer=require("multer")
+const { validateMIMEType } =require("validate-image-type")
 
+const storage=multer.diskStorage({
+  destination:(req,file,cb)=>{
+    cb(null,'public/imgs')
+  },filename:async(req,file,cb)=>{
+    if(req.user){
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+      const db=await openDb()
+      await db.run("update user set img=:url where id=:id",{
+        ":url":file.fieldname+'-'+uniqueSuffix+file.mimetype.replace('/','.'),
+        ":id":req.user.id
+      })
+      cb(null, file.fieldname + '-' + uniqueSuffix+file.mimetype.replace('/','.'))
+    }else{
+      cb("no such user")
+    }
+  }
+})
+
+const upload=multer({storage:storage})
 
 const SQLiteStore = require("connect-sqlite3")(session);
 
@@ -32,17 +55,7 @@ app.use(function (req, res, next) {
 
 
 //custom functions
-function get_time(datetime){
-  let date = datetime.getDate();
-  let month = datetime.getMonth() + 1;
-  let year = datetime.getFullYear();
-  let hours = datetime.getHours();
-  let minutes = datetime.getMinutes();
-  
-  result=year + "-" + month + "-" + date+" "+hours+":"+minutes
-  console.log(result)
-  return result
-}
+
 
 
 
@@ -75,7 +88,7 @@ passport.use(
 );
 
 passport.serializeUser(function (user, cb) {
-  cb(null, { id: user.id, name: user.name, username: user.username });
+  cb(null, { id: user.id, name: user.name, username: user.username ,img:user.img});
 });
 
 passport.deserializeUser(function (user, cb) {
@@ -94,7 +107,7 @@ app.post("/signup", async (req, res, next) => {
 
   try {
     result = await db.run(
-      "INSERT into user (name,username,password) Values(:name,:username,:password)",
+      "INSERT into user (name,username,password,img) Values(:name,:username,:password,default.png)",
       {
         ":name": data.name,
         ":username": data.username,
@@ -135,16 +148,66 @@ app.post(
 
 app.get("/me", (req, res) => {
   if (req.user) {
-    res.send({ name: req.user.name, username: req.user.username });
+    res.send({ name: req.user.name, username: req.user.username,img: req.user.img });
   } else {
-    res.statusCode = 403;
+    res.statusCode = 401;
     res.send({ message: "you are not signed in" });
   }
 });
 
 
-//upload pfp img
+app.post("/me/img",upload.single('img'),async(req,res)=>{
+  if(req.user){
+    const result = await validateMIMEType("./public/imgs/"+req.file.filename, {
+      allowMimeTypes: ['image/jpeg', 'image/gif', 'image/png']
+    });
+    if (!result.ok) {
+      fs.unlinkSync(path.join(__dirname+"/public/imgs/"+req.file.filename))
+      req.user.img="default.png"
+      const db=await openDb()
+      await db.run("update user set img='default.png' where id=:id",{
+        ":id":req.user.id
+      })
+      res.send({message:"file type is not accepted"})
+    }else{
+      res.send({message:"done"})
+    }
+  }
+})
 
+
+app.get("/img/:name",(req,res)=>{
+  try{
+    res.sendFile(path.join(__dirname+"/public/imgs/"+req.params.name))
+  }catch(err){
+    console.log(err)
+    res.send({message:"no such file"})
+  }
+})
+
+
+app.delete("/me/img",async(req,res)=>{
+  if(req.user){
+    const db=await openDb()
+    const data=await db.get("select img from user where id=:id",{
+      ":id":req.user.id
+    })
+    if(data.img=="default.png"){
+      res.statusCode=403
+      res.send({message:"you dont have img to remove"})
+    }else{
+      fs.unlinkSync(path.join(__dirname+"/public/imgs/"+data.img))
+      req.user.img="default.png"
+      await db.run("update user set img='default.png' where id=:id",{
+        ":id":req.user.id
+      })
+      res.send({message:"done"})
+    }
+  }else{
+    res.statusCode = 401;
+    res.send({ message: "you are not signed in" });
+  }
+})
 
 app.delete("/me", async (req, res) => {
   if (req.user) {
@@ -206,7 +269,7 @@ app.post("/post",async (req,res) => {
     try{
       await db.run("INSERT INTO post (body,date,posterid) values (:body,:date,:posterid)",{
         ":body":data.body,
-        ":date":get_time(date),
+        ":date":date.toISOString(),
         ":posterid":req.user.id
       })
       res.send({message:"done"})
@@ -216,7 +279,7 @@ app.post("/post",async (req,res) => {
       res.send({message:"something wrong happend"})
     }
   }else{
-    res.status(403)
+    res.status(401)
     res.send({message:"you are not signed in"})
   }
 })
@@ -274,7 +337,7 @@ app.put("/post/:id",async (req,res)=>{
   })
   
   if(req.user==undefined){
-    res.statusCode=403
+    res.statusCode=401
     res.send({message:"you are not signed in"})
   }
   else if(req.user.id==result.posterid){
@@ -290,7 +353,7 @@ app.put("/post/:id",async (req,res)=>{
       res.send({message:"something went wrong"})
     }
   }else{
-    res.statusCode=403
+    res.statusCode=401
     res.send({message:"you dont have permission"})
   }
 })
@@ -302,7 +365,7 @@ app.delete("/post/:id",async (req,res)=>{
     ":id":id
   })
   if(req.user==undefined){
-    res.statusCode=403
+    res.statusCode=401
     res.send({message:"you are not signed in"})
   }else if(result==undefined){
     res.statusCode=404
@@ -321,7 +384,7 @@ app.delete("/post/:id",async (req,res)=>{
       res.send({message:"something went wrong"})
     }
   }else{
-    res.statusCode=403
+    res.statusCode=401
     res.send({message:"you dont have permission"})
   }
 })
