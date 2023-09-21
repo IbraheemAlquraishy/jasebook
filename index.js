@@ -6,8 +6,7 @@ const passport = require("passport");
 const cookieParser = require("cookie-parser");
 const LocalStrategy = require("passport-local");
 const session = require("express-session");
-const res = require("express/lib/response");
-const { user } = require("pg/lib/defaults");
+
 
 const SQLiteStore = require("connect-sqlite3")(session);
 
@@ -29,6 +28,24 @@ app.use(function (req, res, next) {
   req.session.messages = [];
   next();
 });
+
+
+
+//custom functions
+function get_time(datetime){
+  let date = datetime.getDate();
+  let month = datetime.getMonth() + 1;
+  let year = datetime.getFullYear();
+  let hours = datetime.getHours();
+  let minutes = datetime.getMinutes();
+  
+  result=year + "-" + month + "-" + date+" "+hours+":"+minutes
+  console.log(result)
+  return result
+}
+
+
+
 
 //passport functions
 passport.use(
@@ -125,26 +142,11 @@ app.get("/me", (req, res) => {
   }
 });
 
-//  app.delete("/deuser",async (req, res) => {
-//     const db = await openDb();
-//     const dename = req.user.name
 
-//     if(req.user){
-//         await db.run("DELETE FROM user WHERE name =:name",{":name": dename}, function(err) {
-//             if(err){
-//                 console.log(err)
-//                 res.send({ message: "This user does not exist!" })
-//             }
-//             else{
-//                 console.log("the user has been removed");
-//                 res.send({ message: `The following user: ${dename} has been removed!` })
-//             }
-//         }}
+//upload pfp img
 
-// })
-////////////////////////////////////////
 
-app.delete("/deuser", async (req, res) => {
+app.delete("/me", async (req, res) => {
   if (req.user) {
     const db = await openDb();
     const deid = req.user.id;
@@ -183,10 +185,10 @@ app.get("/myposts", async (req, res) => {
   if (req.user) {
     const db = await openDb();
     try {
-      const data = await db.all("select * from post where posterid=:id", {
+      const data = await db.all("select id,body,date from post where posterid=:id", {
         ":id": req.user.id,
       });
-
+      
       res.send(data);
     } catch (e) {
       res.send({ message: "you dont have posts" });
@@ -196,6 +198,133 @@ app.get("/myposts", async (req, res) => {
   }
 });
 
+app.post("/post",async (req,res) => {
+  if(req.user){
+    const data=req.body
+    const db=await openDb()
+    let date=new Date(Date.now())
+    try{
+      await db.run("INSERT INTO post (body,date,posterid) values (:body,:date,:posterid)",{
+        ":body":data.body,
+        ":date":get_time(date),
+        ":posterid":req.user.id
+      })
+      res.send({message:"done"})
+    }catch(err){
+      console.log(err)
+      res.statusCode=500
+      res.send({message:"something wrong happend"})
+    }
+  }else{
+    res.status(403)
+    res.send({message:"you are not signed in"})
+  }
+})
+
+
+app.get("/user/:name/posts",async(req,res)=>{
+  const name=req.params.name
+  const db=await openDb()
+  const user=await db.get("select id from user where name=:name",{
+    ":name":name
+  })
+  console.log(user)
+  if(user==undefined){
+    res.statusCode=404
+    res.send({message:"user does not exist"})
+  }else{
+    try{
+      const result=await db.all("select id,body,date from post where posterid=:posterid",{
+        ":posterid":user.id
+      })
+      res.send(result)
+    }catch(err){
+      console.log(err)
+      res.statusCode=500
+      res.send({message:"something went wrong"})
+    }
+  }
+})
+
+app.get('/post/:id',async(req,res)=>{
+  const id=req.params.id
+  const db=await openDb()
+  try{
+  const result=await db.get("select * from post where id=:id",{
+    ":id":id
+  })
+  
+  const user=await db.get("select name from user where id=:id",{
+    ":id":result.posterid
+  })
+  res.send({id:result.id,body:result.body,data:result.data,poster:user.name})
+  }catch(err){
+  console.log(err)
+  res.statusCode=500
+  res.send({message:"something went wrong"})
+  }
+})
+
+
+app.put("/post/:id",async (req,res)=>{
+  const id=req.params.id
+  const db=await openDb()
+  const result=await db.get("select * from post where id=:id",{
+    ":id":id
+  })
+  
+  if(req.user==undefined){
+    res.statusCode=403
+    res.send({message:"you are not signed in"})
+  }
+  else if(req.user.id==result.posterid){
+    try{
+      await db.run("update post set body=:body where id=:id",{
+        ":body":req.body.body,
+        ":id":id
+      })
+      res.send({message:"done"})
+    }catch(err){
+      console.log(err)
+      res.statusCode=500
+      res.send({message:"something went wrong"})
+    }
+  }else{
+    res.statusCode=403
+    res.send({message:"you dont have permission"})
+  }
+})
+
+app.delete("/post/:id",async (req,res)=>{
+  const id=req.params.id
+  const db=await openDb()
+  const result=await db.get("select * from post where id=:id",{
+    ":id":id
+  })
+  if(req.user==undefined){
+    res.statusCode=403
+    res.send({message:"you are not signed in"})
+  }else if(result==undefined){
+    res.statusCode=404
+    res.send({message:"no such post"})
+  }
+  
+  else if(req.user.id==result.posterid){
+    try{
+      await db.run("delete from post  where id=:id",{
+        ":id":id
+      })
+      res.send({message:"done"})
+    }catch(err){
+      console.log(err)
+      res.statusCode=500
+      res.send({message:"something went wrong"})
+    }
+  }else{
+    res.statusCode=403
+    res.send({message:"you dont have permission"})
+  }
+})
 //likes: add like - remove like - get liked posts by user - get users who likes by post - number of the likes on post
 
 app.listen(8000, () => {
