@@ -392,7 +392,7 @@ app.delete("/post/:id",async (req,res)=>{
 
 
 
-app.post("/post/:id/like", async (res,req)=> {
+app.post("/post/:id/like", async (req,res)=> {
 const db = await openDb()
 if(req.user){
   
@@ -440,9 +440,11 @@ app.get("/user/:name/likes",async(req,res)=>{
       const result = await db.all("SELECT postid FROM LIKE WHERE userid=:userid",{
         ":userid":user.id
       })
+      
       const postarray = []
-      for(let i =0; i<resault.length();i++){
-    const r = await db.get("SELECT * FROM POST WHERE id=:id", {":id": resault[i]})
+      for(let i =0; i<result.length;i++){
+        console.log(result[i])
+    const r = await db.get("SELECT * FROM POST WHERE id=:id", {":id": result[i].postid})
     postarray.push(r)
       }
       res.send(postarray)
@@ -471,8 +473,8 @@ app.get("/post/:id/likes",async(req,res)=>{
         ":postid":post.id
       })
       const userarray = []
-      for(let i =0; i<resault.length();i++){
-    const r = await db.get("SELECT username FROM user WHERE id=:id", {":id": resault[i]})
+      for(let i =0; i<result.length;i++){
+    const r = await db.get("SELECT username FROM user WHERE id=:id", {":id": result[i].userid})
     userarray.push(r)
       }
       res.send(userarray)
@@ -499,7 +501,7 @@ app.get("/post/:id/likes/count",async(req,res)=>{
       const result = await db.all("SELECT userid FROM LIKE WHERE postid=:postid",{
         ":postid":post.id
       })
-      res.send({count: resault.length()})
+      res.send({count: result.length})
     }catch(err){
       console.log(err)
       res.statusCode=500
@@ -508,7 +510,7 @@ app.get("/post/:id/likes/count",async(req,res)=>{
   }
 })
 
-
+//friends routes
 
 
 app.listen(8000, () => {
