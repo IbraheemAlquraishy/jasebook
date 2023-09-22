@@ -390,6 +390,127 @@ app.delete("/post/:id",async (req,res)=>{
 })
 //likes: add like - remove like - get liked posts by user - get users who likes by post - number of the likes on post
 
+
+
+app.post("/post/:id/like", async (res,req)=> {
+const db = await openDb()
+if(req.user){
+  
+  const resault = await db.get("select * from like where userid=:userid and postid=:postid",{":userid" :req.user.id, ":postid": req.params.id})
+ if(resault==undefined){
+  try{
+    await db.run("INSERT INTO LIKE (userid,postid) values (:userid, :postid)", {":userid" :req.user.id, ":postid": req.params.id})
+    res.send({message: "Done"})
+  }
+ catch(err){
+  console.log(err)
+  res.statusCode=500
+  res.send({message:"something went wrong"})
+ }
+ }else{
+  try{
+    await db.run("delete from like where userid=:userid and postid=:postid",{":userid" :req.user.id, ":postid": req.params.id})
+    res.send({message: "Done"})
+  }
+ catch(err){
+  console.log(err)
+  res.statusCode=500
+  res.send({message:"something went wrong"})
+ }
+ }
+}else{
+  res.statusCode=401
+  res.send({message:"you dont have permission"})
+}
+})
+
+
+app.get("/user/:name/likes",async(req,res)=>{
+  const name=req.params.name
+  const db=await openDb()
+  const user=await db.get("select id from user where name=:name",{
+    ":name":name
+  })
+  console.log(user)
+  if(user==undefined){
+    res.statusCode=404
+    res.send({message:"user does not exist"})
+  }else{
+    try{
+      const result = await db.all("SELECT postid FROM LIKE WHERE userid=:userid",{
+        ":userid":user.id
+      })
+      const postarray = []
+      for(let i =0; i<resault.length();i++){
+    const r = await db.get("SELECT * FROM POST WHERE id=:id", {":id": resault[i]})
+    postarray.push(r)
+      }
+      res.send(postarray)
+    }catch(err){
+      console.log(err)
+      res.statusCode=500
+      res.send({message:"something went wrong"})
+    }
+  }
+})
+
+
+app.get("/post/:id/likes",async(req,res)=>{
+  const id=req.params.id
+  const db=await openDb()
+  const post=await db.get("select id from post where id=:id",{
+    ":id":id
+  })
+  console.log(post)
+  if(post==undefined){
+    res.statusCode=404
+    res.send({message:"post does not exist"})
+  }else{
+    try{
+      const result = await db.all("SELECT userid FROM LIKE WHERE postid=:postid",{
+        ":postid":post.id
+      })
+      const userarray = []
+      for(let i =0; i<resault.length();i++){
+    const r = await db.get("SELECT username FROM user WHERE id=:id", {":id": resault[i]})
+    userarray.push(r)
+      }
+      res.send(userarray)
+    }catch(err){
+      console.log(err)
+      res.statusCode=500
+      res.send({message:"something went wrong"})
+    }
+  }
+})
+
+app.get("/post/:id/likes/count",async(req,res)=>{
+  const id=req.params.id
+  const db=await openDb()
+  const post=await db.get("select id from post where id=:id",{
+    ":id":id
+  })
+  console.log(post)
+  if(post==undefined){
+    res.statusCode=404
+    res.send({message:"post does not exist"})
+  }else{
+    try{
+      const result = await db.all("SELECT userid FROM LIKE WHERE postid=:postid",{
+        ":postid":post.id
+      })
+      res.send({count: resault.length()})
+    }catch(err){
+      console.log(err)
+      res.statusCode=500
+      res.send({message:"something went wrong"})
+    }
+  }
+})
+
+
+
+
 app.listen(8000, () => {
   console.log("listening to http://localhost:8000");
 });
