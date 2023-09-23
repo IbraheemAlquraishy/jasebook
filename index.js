@@ -285,6 +285,22 @@ app.post("/post",async (req,res) => {
 })
 
 
+app.get("/user/:name",async(req,res)=>{
+  const name=req.params.name
+  const db=await openDb()
+  const user=await db.get("select * from user where name=:name",{
+    ":name":name
+  })
+  console.log(user)
+  if(user==undefined){
+    res.statusCode=404
+    res.send({message:"user does not exist"})
+  }else{
+    res.send({name:user.name,username:user.username,img:user.img})
+  }
+})
+
+
 app.get("/user/:name/posts",async(req,res)=>{
   const name=req.params.name
   const db=await openDb()
@@ -511,6 +527,201 @@ app.get("/post/:id/likes/count",async(req,res)=>{
 })
 
 //friends routes
+app.post("/user/:name/friend",async(req,res)=>{
+  if(req.user){
+    const db=await openDb()
+    const friend=await db.get("select id from user where name=:name",{
+      ":name":req.params.name
+    })
+    console.log(friend)
+    if(friend==undefined){
+      res.statusCode=404
+      res.send({message:"no such user"})
+    }else{
+      const x=await db.get("select * from friend where user1=:me and user2=:id",{
+        ":id":friend.id,
+        ":me":req.user.id
+      })
+      console.log(x)
+      if(x==undefined){
+      await db.run("insert into friend(user1,user2,accepted) values(:user,:friend,0)",{
+        ":user":req.user.id,
+        ":friend":friend.id
+      })
+      res.send({message:"friend request has been send"})
+    }else{
+      if(x.accepted==1){
+        res.send({message:"you are friends"})
+      }else{
+        res.send({message:"already a request has been send"})
+      }
+    }
+    }
+  }else{
+    res.statusCode=401
+    res.send({message:"you are not signed in"})
+  }
+})
+
+
+app.get("/me/request",async(req,res)=>{
+  if(req.user){
+    const db=await openDb()
+    const result=await db.all("select id,user1 from friend where user2=:user and accepted=0",{
+      ":user":req.user.id
+    })
+    if(result==undefined){
+      res.send({message:"you dont have new friend requests"})
+    }else{
+      const r=[]
+      for(let i=0;i<result.length;i++){
+        const x=await db.get("select name from user where id=:id",{":id":result[i].user1})
+        r.push({id:result[i].id,name:x.name})
+      }
+      res.send(r)
+    }
+  }else{
+    res.statusCode=401
+    res.send({message:"you are not signed in"})
+  }
+})
+
+
+app.post("/me/request/:id",async(req,res)=>{
+  if(req.user){
+    const db=await openDb()
+    const request=await db.get("select * from friend where id=:id",{
+      ":id":req.params.id
+    })
+    if(req.user.id==request.user2){
+      if(request.accepted==0){
+        if(req.body.accept==1){
+        await db.run("update friend set accepted=1 where id=:id",{
+          ":id":req.params.id
+        })}
+        else{
+          await db.run("delete from friend where id=:id",{
+            ":id":req.params.id
+          })
+        }
+        res.send({message:"done"})
+      }else{
+        res.send({message:"already accepted"})
+      }
+    }else{
+      res.statusCode=401
+      res.send({message:"you dont have permission"})
+    }
+  }else{
+    res.statusCode=401
+    res.send({message:"you are not signed in"})
+  }
+})
+
+
+app.get("/me/friend",async(req,res)=>{
+  if(req.user){
+    const db=await openDb()
+    const friends=await db.all("select * from friend where user1=:id or user2=:id",{
+      ":id":req.user.id
+    })
+    const r=[]
+    for(let i=0;i<friends.length;i++){
+      let j
+      if(friends[i].user1==req.user.id){
+        const x=await db.get("select name from user where id=:id",{
+          ":id":friends[i].user2
+        })
+        if(friends[i].accepted==0){
+          j={name:x.name,stat:"waiting to accept"}
+        }else{
+          j={name:x.name,stat:"friends"}
+        }
+      }else{
+        const x=await db.get("select name from user where id=:id",{
+          ":id":friends[i].user1
+        })
+        if(friends[i].accepted==1){
+          j={name:x.name,stat:"friends"}
+        }
+      }
+      r.push(j)
+    }
+    res.send(r)
+  }else{
+    res.statusCode=401
+    res.send({message:"you are not signed in"})
+  }
+})
+
+app.get("/user/:name/friend",async(req,res)=>{
+  
+    const db=await openDb()
+    const user=await db.get("select id from user where name=:name",{
+      ":name":req.params.name
+    })
+    if(user==undefined){
+      res.statusCode=404
+      res.send({message:"no such user"})
+    }else{
+    const friends=await db.all("select * from friend where user1=:id and accepted=1 or user2=:id and accepted=1",{
+      ":id":user.id
+    })
+    const r=[]
+    for(let i=0;i<friends.length;i++){
+      let j
+      if(friends[i].user1==user.id){
+        const x=await db.get("select name from user where id=:id",{
+          ":id":friends[i].user2
+        })
+        
+        j={name:x.name}
+        
+      }else{
+        const x=await db.get("select name from user where id=:id",{
+          ":id":friends[i].user1
+        })
+        if(friends[i].accepted==1){
+          j={name:x.name}
+        }
+      }
+      r.push(j)
+    }
+    res.send(r)
+  }
+})
+
+
+app.delete("/me/friend/:name",async(req,res)=>{
+  if(req.user){
+    const db=await openDb()
+    const friend=await db.get("select id from user where name=:name",{
+      ":name":req.params.name
+    })
+    if(friend==undefined){
+      res.statusCode=404
+      res.send({message:"no such user"})
+    }else{
+      const x=await db.get("select id from friend where user1=:id and user2=:me or user1=:me and user2=:id",{
+        ":id":friend.id,
+        ":me":req.user.id
+      })
+      if(x==undefined){
+        res.statusCode=404
+        res.send({message:"you are not friends"})
+      }else{
+        await db.run("delete from friend where id=:id",{
+          ":id":x.id
+        })
+        res.send({message:"done"})
+      }
+    }
+  }else{
+    res.statusCode=401
+    res.send({message:"you are not signed in"})
+  }
+})
+
 
 
 app.listen(8000, () => {
