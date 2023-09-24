@@ -10,6 +10,9 @@ const fs=require("fs")
 const path=require("path")
 const multer=require("multer")
 const { validateMIMEType } =require("validate-image-type")
+const {noty,getnoty,denoty}=require("./notification")
+const {feed}=require("./feed")
+
 
 const storage=multer.diskStorage({
   destination:(req,file,cb)=>{
@@ -107,7 +110,7 @@ app.post("/signup", async (req, res, next) => {
 
   try {
     result = await db.run(
-      "INSERT into user (name,username,password,img) Values(:name,:username,:password,default.png)",
+      "INSERT into user (name,username,password,img) Values(:name,:username,:password,'default.png')",
       {
         ":name": data.name,
         ":username": data.username,
@@ -244,7 +247,7 @@ app.post("/logout", function (req, res, next) {
 });
 
 //post handlers
-app.get("/myposts", async (req, res) => {
+app.get("/me/post", async (req, res) => {
   if (req.user) {
     const db = await openDb();
     try {
@@ -267,11 +270,22 @@ app.post("/post",async (req,res) => {
     const db=await openDb()
     let date=new Date(Date.now())
     try{
-      await db.run("INSERT INTO post (body,date,posterid) values (:body,:date,:posterid)",{
+      const id=await db.get("INSERT INTO post (body,date,posterid) values (:body,:date,:posterid);select id from post where body=:body and date=:date and posterid=:posterid",{
         ":body":data.body,
         ":date":date.toISOString(),
         ":posterid":req.user.id
       })
+      const friends=await db.all("select * from friend where user1=:id and accepted=1 or user2=:id and accepted=1",{
+        ":id":req.user.id
+      })
+      console.log(friends)
+      for(let i=0;i<friends.length;i++){
+        if(friends[i].user1==req.user.id){
+          await noty(friends[i].user2,req.user.id,1,id)
+        }else{
+          await noty(friends[i].user1,req.user.id,1,id)
+        }
+      }
       res.send({message:"done"})
     }catch(err){
       console.log(err)
@@ -416,6 +430,8 @@ if(req.user){
  if(resault==undefined){
   try{
     await db.run("INSERT INTO LIKE (userid,postid) values (:userid, :postid)", {":userid" :req.user.id, ":postid": req.params.id})
+    const user=await db.get("select posterid from post where id=:postid",{":postid":req.params.id})
+    await noty(user.posterid,req.user.id,3,req.params.id)
     res.send({message: "Done"})
   }
  catch(err){
@@ -548,6 +564,7 @@ app.post("/user/:name/friend",async(req,res)=>{
         ":user":req.user.id,
         ":friend":friend.id
       })
+      await noty(friend.id,req.user.id,4)
       res.send({message:"friend request has been send"})
     }else{
       if(x.accepted==1){
@@ -721,6 +738,206 @@ app.delete("/me/friend/:name",async(req,res)=>{
     res.send({message:"you are not signed in"})
   }
 })
+
+//add - comment
+app.get("/post/:id/comment", async (req, res) => {
+  const db = await openDb();
+  
+  
+  const result = await db.all(
+    "select * from comment where postid=:postid",
+  {  ":postid": req.params.id });
+  if (result == undefined) {
+    res.send({ message: "there are no comments" });
+  } else {
+    const r=[]
+    let j
+    for(let i=0;i<result.length;i++){
+      const x=await db.get("select name from user where id=:id",{
+        ":id":result[i].commenterid
+      })
+
+      j={id:result[i].id,commenter:x.name,postid:result[i].postid,body:result[i].body,date:result[i].date}
+      r.push(j)
+    }
+
+      res.send(r);
+  }
+  
+});
+
+
+app.post("/post/:id/comment", async (req, res) => {
+  const db = await openDb();
+  const comm = req.body.body;
+  if (req.user) {
+    try {
+      await db.run(
+        "INSERT INTO comment (commenterid,postid,body,date) values (:userid, :postid,:body, :date)",
+        {
+          ":userid": req.user.id,
+          ":postid": req.params.id,
+          ":body":comm,
+          ":date":new Date(Date.now()).toISOString()
+        }
+      );
+      const user=await db.get("select posterid from post where id=:postid",{":postid":req.params.id})
+      await noty(user.posterid,req.user.id,2,req.params.id)
+      res.send({ message: "Done" });
+    } catch (err) {
+      console.log(err);
+      res.statusCode = 500;
+      res.send({ message: "something went wrong" });
+    }
+  } else {
+    res.statusCode = 401;
+    res.send({ message: "you dont have permission" });
+  }
+});
+
+//delete comment
+
+app.delete("/post/:id/comment/:commid", async (req, res) => {
+  const db = await openDb();
+  const postid = req.params.id;
+  const commid=req.params.commid
+  if (req.user) {
+    const result = await db.get(
+      "select * from comment where commenterid=:userid and postid=:postid and id=:commid",
+      { ":userid": req.user.id, ":postid": postid, ":commid": commid }
+    );
+    if (result == undefined) {
+      res.send({ message: "This comment does not exist" });
+    } else {
+      try {
+        await db.run("delete from comment where id=:commid", {
+          ":commid": commid,
+        });
+        res.send({ message: "done" });
+      } catch (err) {
+        console.log(err);
+        res.statusCode = 500;
+        res.send({ message: "something went wrong" });
+      }
+    }
+  } else {
+    res.statusCode = 401;
+    res.send({ message: "you dont have permission" });
+  }
+});
+
+//edit comment
+
+app.put("/post/:id/comment/:commid", async (req, res) => {
+  const db = await openDb();
+  const comm = req.body.body;
+  const postid = req.params.id;
+  const commid=req.params.commid
+  if (req.user) {
+    const result = await db.get(
+      "select * from comment where commenterid=:userid and postid=:postid and id=:commid",
+      { ":userid": req.user.id, ":postid": postid, ":commid": commid }
+    );
+    if (result == undefined) {
+      res.send({ message: "This comment does not exist" });
+    } else {
+      try {
+        await db.run("UPDATE comment SET body =:comm WHERE id=:commid", {
+          ":comm": comm,
+          ":commid": commid,
+        });
+        res.send({ message: "Done" });
+      } catch (err) {
+        console.log(err);
+        res.statusCode = 500;
+        res.send({ message: "something went wrong" });
+      }
+    }
+  } else {
+    res.statusCode = 401;
+    res.send({ message: "you dont have permission" });
+  }
+});
+
+//number of comments
+
+app.get("/post/:id/comment/count", async (req, res) => {
+  const id = req.params.id;
+  const db = await openDb();
+  const post = await db.get("select id from post where id=:id", {
+    ":id": id,
+  });
+  console.log(post);
+  if (post == undefined) {
+    res.statusCode = 404;
+    res.send({ message: "post does not exist" });
+  } else {
+    try {
+      const result = await db.all(
+        "SELECT id FROM comment WHERE postid=:postid",
+        {
+          ":postid": post.id,
+        }
+      );
+      res.send({ count: result.length });
+    } catch (err) {
+      console.log(err);
+      res.statusCode = 500;
+      res.send({ message: "something went wrong" });
+    }
+  }
+});
+
+
+//notification
+app.get("/me/notifiaction",async(req,res)=>{
+  if(req.user){
+    const r=await getnoty(req.user)
+    res.send(r)
+  }else {
+    res.statusCode = 401;
+    res.send({ message: "you dont have permission" });
+  }
+
+})
+
+app.delete("/me/notifiaction/:id",async(req,res)=>{
+  if(req.user){
+    const db=await openDb()
+    const d=await db.get("select recyid from noty where id=:id",{
+      ":id":req.params.id
+    })
+    if(d==undefined){
+      res.statusCode=404
+      res.send({message:"no such notification"})
+    }else{
+    if(d.recyid==req.user.id){
+      await denoty(req.params.id)
+      res.send({message:"done"})
+    }else {
+      res.statusCode = 401;
+      res.send({ message: "you dont have permission" });
+    }
+  }
+  }else {
+    res.statusCode = 401;
+    res.send({ message: "you dont have permission" });
+  }
+})
+
+
+
+//feed
+app.get("/post",async(req,res)=>{
+  if(req.user){
+    const list=await feed(req.user.id)
+    res.send(list)
+  }else{
+    const list=await feed()
+    return list
+  }
+})
+
 
 
 
