@@ -934,7 +934,7 @@ app.get("/post",async(req,res)=>{
     res.send(list)
   }else{
     const list=await feed()
-    return list
+    res.send(list)
   }
 })
 
